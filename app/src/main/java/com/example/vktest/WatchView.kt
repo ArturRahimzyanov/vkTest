@@ -1,22 +1,24 @@
 package com.example.vktest
 
 import android.content.Context
-import android.graphics.Canvas
-import android.graphics.Color
-import android.graphics.Paint
-import android.graphics.Rect
+import android.graphics.*
+import android.graphics.BitmapFactory.decodeResource
+import android.os.Parcel
+import android.os.Parcelable
 import android.util.AttributeSet
+import android.util.Log
 import android.util.TypedValue
-import android.view.View
 import java.util.*
 import kotlin.Int
 import kotlin.math.cos
+import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.sin
+import kotlin.properties.Delegates
 
 
 class WatchView( context: Context, attributesSet: AttributeSet?, defStyleAtr: Int, defStyleRes: Int )
-    : View(context, attributesSet, defStyleAtr, defStyleRes) {
+    : androidx.appcompat.widget.AppCompatImageView(context, attributesSet, defStyleAtr) {
 
     constructor(context: Context, attributesSet: AttributeSet?, defStyleAtr: Int) : this(
         context,
@@ -36,98 +38,161 @@ class WatchView( context: Context, attributesSet: AttributeSet?, defStyleAtr: In
     }
 
     private val paint = Paint()
-    private val rect = Rect()
-    private val numbers = arrayListOf(1f, 2f, 3f ,4f, 5f, 6f, 7f,8f ,9f ,10f, 11f, 12f)
-    private var radius = 0f
+    private var bitmap: Bitmap by Delegates.notNull()
+    private var radius = 0
     private val padding = 25
-    private var truncation = 0f
-    private var fontSize = 0f
+    private var handTruncation = 0
+    private var hourHandTruncation = 0
+    private  var hours = 0
+    private  var minutes = 0
+    private  var seconds = 0
 
     init {
         if (attributesSet != null) {
             initAttributes(attributesSet, defStyleAtr, defStyleAtr)
         }
+        isSaveEnabled = true
+
+        bitmap = decodeResource(resources, R.drawable.watcgpng)
+
+        scaleType = ScaleType.CENTER
+        Log.d(TAG, "$width , $height, ${bitmap.width}" )
     }
 
     private fun initAttributes(attributesSet: AttributeSet?, defStyleAtr: Int, defStyleAtr1: Int) {
-
+        val typedArray = context.obtainStyledAttributes(attributesSet, R.styleable.WatchView, defStyleAtr, defStyleAtr1 )
+        typedArray.recycle()
     }
+
 
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
-        radius = (min(width , height)/2 - padding).toFloat()
-        fontSize = TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, 19F, resources.displayMetrics)
-        truncation = radius/10
-        paint.style = Paint.Style.FILL
-        paint.color = Color.WHITE
-        canvas.drawPaint(paint)
-        canvas.translate(width/2f, height/2f)
-        drawCircle(canvas)
-        drawNumeral(canvas)
+        val min: Int = min(height, width)
+        radius = (min / 2 - padding)
+        handTruncation = (min / 20)
+        hourHandTruncation = (min / 7)
+        canvas.drawColor(Color.TRANSPARENT, PorterDuff.Mode.OVERLAY)
+        drawWatches(canvas)
+        drawCenter(canvas)
         drawHands(canvas)
         postInvalidateDelayed(400)
         invalidate()
         requestLayout()
     }
 
-    private fun drawNumeral(canvas: Canvas) {
-        paint.reset()
-        paint.color = Color.BLACK
-        paint.isAntiAlias = true
-        paint.textSize = fontSize
-
-        for( number in numbers ){
-            val tmp = numbers[number.toInt() - 1].toInt().toString()
-            paint.getTextBounds(tmp, 0, tmp.length, rect)
-            val angel = Math.PI/6f * (number - 3f)
-            if(width < height){
-                val x = cos(angel) * (radius + 275 )/2f - rect.width()/2f
-                val y = sin(angel) * (radius + 275 )/2f + rect.height()/2f
-                canvas.drawText(tmp, x.toFloat(), y.toFloat(), paint)
-            }else{
-                val x = cos(angel) * (radius + 200 )/2f - rect.width()/2f
-                val y = sin(angel) * (radius + 200 )/2f + rect.height()/2f
-                canvas.drawText(tmp, x.toFloat(), y.toFloat(), paint)
+    private fun drawHand(canvas: Canvas, loc: Double, isHour: Boolean, isMinute: Boolean) {
+        val angle = Math.PI * loc / 30 - Math.PI / 2
+        var handRadius = 0
+        handRadius = when {
+            isHour -> {
+                radius - handTruncation - hourHandTruncation
+            }
+            isMinute -> {
+                radius - handTruncation
+            }
+            else -> {
+                radius - handTruncation
             }
         }
+        canvas.drawLine(
+            (width / 2).toFloat(), (height / 2).toFloat(),
+            (width / 2 + cos(angle) * handRadius).toFloat(),
+            (height / 2 + sin(angle) * handRadius).toFloat(),
+            paint
+        )
     }
 
-    private fun drawCircle(canvas: Canvas) {
+    private fun drawHands(canvas: Canvas) {
+        val c = Calendar.getInstance()
+        hours = c.get(Calendar.HOUR_OF_DAY)
+        hours = if (hours > 12) {
+            hours - 12
+        } else {
+            hours
+        }
+        minutes = c.get(Calendar.MINUTE)
+        seconds = c.get(Calendar.SECOND)
+        drawHand(
+            canvas, ((hours + minutes / 60) * 5F).toDouble(),
+            isHour = true,
+            isMinute = false
+        )
+        drawHand(canvas, minutes.toDouble(), isHour = false, isMinute = true)
+        drawHand(canvas, seconds.toDouble(), isHour = false, isMinute = false)
+    }
+
+    private fun drawCenter(canvas: Canvas) {
+        paint.style = Paint.Style.FILL
+        canvas.drawCircle((width / 2).toFloat(), (height / 2).toFloat(), 12F, paint)
+    }
+
+    private fun drawWatches(canvas: Canvas) {
         paint.reset()
         paint.color = Color.BLACK
-        paint.strokeWidth = 10f
-        paint.style = Paint.Style.STROKE
-        paint.isAntiAlias = true
-        canvas.drawCircle(0f, 0f, radius, paint)
-        paint.strokeCap = Paint.Cap.ROUND
-        paint.strokeWidth = 30f
-        canvas.drawPoint(0f,0f, paint)
+        paint.strokeWidth = 10F
+        paint.style = Paint.Style.STROKE;
+        val bitMap = decodeResource(resources, R.drawable.watcgpng)
+        val resizedBitmap = Bitmap.createScaledBitmap(bitMap, width, height, true)
+        canvas.drawBitmap(
+            resizedBitmap,
+            ((width - resizedBitmap.width) / 2).toFloat(),
+            ((height - resizedBitmap.height) / 2).toFloat(),
+            paint
+        )
     }
 
-    private fun drawHand(canvas: Canvas, loc: Float, isHour: Boolean) {
-        val angle = Math.PI * loc/30 - Math.PI/2
-        var handRadius = radius - truncation
-        if(isHour){
-            handRadius -= truncation*2
-        }
-        canvas.drawLine(0f, 0f, (cos(angle) * handRadius).toFloat(), (sin(angle) * handRadius).toFloat(), paint)
+    override fun onSaveInstanceState() : Parcelable? {
+        Log.d(TAG, "onSaveSate $id")
+       val savedState = SavedState(super.onSaveInstanceState())
+        savedState.hours = hours
+        savedState.minutes = minutes
+        savedState.seconds = seconds
+        return savedState
     }
 
-        private fun drawHands(canvas: Canvas) {
-            paint.reset()
-            paint.color = Color.BLACK
-            paint.style = Paint.Style.STROKE
-            paint.isAntiAlias = true
-            val c = Calendar.getInstance()
-            var hour = c.get(Calendar.HOUR_OF_DAY)
-            if(hour > 12){ hour -= 12 }
-            paint.strokeWidth = 20f
-            drawHand(canvas, (hour + c.get(Calendar.MINUTE)/60f ) * 5f, true)
-            paint.strokeWidth = 10f
-            drawHand(canvas, c.get(Calendar.MINUTE).toFloat(), false)
-            paint.strokeWidth = 5f
-            drawHand(canvas, c.get(Calendar.SECOND).toFloat(), false)
+    override fun onRestoreInstanceState(state: Parcelable?) {
+        Log.d(TAG, "onRestoreSate + $id")
+        super.onRestoreInstanceState(state)
+        if(state is SavedState){
+            super.onRestoreInstanceState(state)
+            hours = state.hours
+            minutes = state.minutes
+            seconds = state.seconds
+        }else{
+            super.onRestoreInstanceState(state)
         }
+    }
+
+    private class SavedState : BaseSavedState, Parcelable {
+
+        var hours = 0
+        var minutes = 0
+        var seconds = 0
+
+        constructor( superState: Parcelable? ) : super(superState)
+
+        constructor(src: Parcel) : super(src) {
+            hours = src.readInt()
+            minutes = src.readInt()
+            seconds = src.readInt()
+        }
+
+        override fun writeToParcel(dst: Parcel, flags: Int) {
+            super.writeToParcel(dst, flags)
+            dst.writeInt(hours)
+            dst.writeInt(minutes)
+            dst.writeInt(seconds)
+        }
+
+        override fun describeContents(): Int = 0
+
+        companion object CREATOR : Parcelable.Creator<SavedState> {
+            override fun createFromParcel(parcel: Parcel) = SavedState(parcel)
+
+            override fun newArray(size: Int): Array<SavedState?> = arrayOfNulls(size)
+        }
+    }
+
     companion object{
         private val  TAG = "logs"
     }
